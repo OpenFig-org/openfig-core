@@ -1,0 +1,54 @@
+{
+  "name": "openfig-core",
+  "version": "0.3.6",
+  "description": "Isomorphic .fig file parser — reads Figma binary format in Node.js and browsers",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "fflate": "^0.8.2",
+    "fzstd": "^0.1.1",
+    "kiwi-schema": "^0.5.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OpenFig-org/openfig-core.git"
+  },
+  "homepage": "https://github.com/OpenFig-org/openfig-core",
+  "bugs": {
+    "url": "https://github.com/OpenFig-org/openfig-core/issues"
+  },
+  "author": "rcoenen",
+  "keywords": [
+    "figma",
+    "fig",
+    "deck",
+    "parser",
+    "binary",
+    "kiwi",
+    "isomorphic",
+    "slides"
+  ],
+  "license": "MIT"
+}

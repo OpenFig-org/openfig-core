@@ -39,8 +39,23 @@ export function parseFigBinary(data: Uint8Array): FigDocument {
   const chunks: Uint8Array[] = [];
   let off = 12;
   while (off < data.byteLength) {
+    // A truncated or mis-sliced buffer leaves fewer than 4 bytes for the next
+    // length prefix, or declares a chunk running past the end. Report what was
+    // actually seen — the raw DataView RangeError says nothing useful.
+    if (off + 4 > data.byteLength) {
+      throw new Error(
+        `Truncated .fig binary: ${data.byteLength - off} byte(s) left at offset ${off}, ` +
+          `expected a 4-byte chunk length`,
+      );
+    }
     const len = view.getUint32(off, true);
     off += 4;
+    if (off + len > data.byteLength) {
+      throw new Error(
+        `Truncated .fig binary: chunk ${chunks.length} declares ${len} bytes at offset ${off} ` +
+          `but only ${data.byteLength - off} remain`,
+      );
+    }
     chunks.push(data.subarray(off, off + len));
     off += len;
   }

@@ -16,7 +16,7 @@ A freestanding text node on the slide. Typically placed inside a FRAME for auto-
   size: { x: 1200, y: 115 },
   transform: { m00: 1, m01: 0, m02: 0, m10: 0, m11: 1, m12: 0 },
   textData: { characters: 'Slide Deck Title' },
-  fontName: { family: 'Inter', style: 'Bold', postscript: '' },
+  fontName: { family: 'Inter', style: 'Bold', postscript: 'Inter-Bold' },
   fontSize: 96,
   lineHeight: { value: 1.2, units: 'RAW' },
   letterSpacing: { value: -2, units: 'PERCENT' },
@@ -96,7 +96,16 @@ the node.
 - No font embedding — Figma resolves fonts by name at runtime
 - `fontName.family` = display name (e.g. `"Times New Roman"`)
 - `fontName.style` = weight/style variant (e.g. `"Bold"`, `"Regular"`, `"Italic"`)
-- `fontName.postscript` = PostScript name (e.g. `"TimesNewRomanPS-BoldMT"`) — can be `""` for Inter
+- `fontName.postscript` = PostScript name (e.g. `"TimesNewRomanPS-BoldMT"`) —
+  **always set it.** An empty string makes Figma substitute a fallback even when
+  the family is installed and available. The deck opens with no error and no
+  dialog, and renders in the wrong font — there is nothing to attribute it to.
+  Synthesise `Family-Style` with whitespace removed when you have no better
+  source: `Inter-Bold`, `EBGaramond-Regular`, `SpaceGrotesk-SemiBold`. This is
+  what Figma-authored files carry for standard Google Fonts. It applies at every
+  site that writes a `fontName` — node-level and inside `styleOverrideTable`
+  alike, since a run override with an empty PostScript name substitutes just as
+  a node does.
 - `textTracking` = `letterSpacing` percentage as decimal (e.g. `-2%` → `-0.02`)
 - Detaching = sentinel `styleIdForText` + all fields become explicit on node
 
@@ -112,8 +121,8 @@ and `characterStyleIDs` arrays in `textData`.
   textData: {
     characters: 'Normal bold italic',
     styleOverrideTable: [
-      { styleID: 1, fontName: { family: 'Inter', style: 'Bold', postscript: '' } },
-      { styleID: 2, fontName: { family: 'Inter', style: 'Italic', postscript: '' } },
+      { styleID: 1, fontName: { family: 'Inter', style: 'Bold', postscript: 'Inter-Bold' } },
+      { styleID: 2, fontName: { family: 'Inter', style: 'Italic', postscript: 'Inter-Italic' } },
     ],
     characterStyleIDs: [
       0,0,0,0,0,0,0,  // 'Normal ' — styleID 0 = base style

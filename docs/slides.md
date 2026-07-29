@@ -25,8 +25,10 @@ To duplicate a slide from a template:
 
 ## Slide Ordering
 
-Slides are ordered by their `parentIndex.position` character within the SLIDE_ROW.
-Use sequential ASCII starting from `!` (0x21).
+Slides are ordered by their `parentIndex.position` within the SLIDE_ROW. It is a
+string compared as a string, not a single character — see
+[Sibling ordering](invariants.md#sibling-ordering-parentindexposition). A deck
+with more than ~94 slides is exactly where a single-character scheme breaks.
 
 ## Removing Slides
 

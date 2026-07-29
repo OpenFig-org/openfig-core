@@ -96,7 +96,12 @@ These fields can appear on any visual node type:
 Encodes the tree structure:
 
 - **guid** — Points to the parent node's GUID
-- **position** — Single ASCII character for sibling ordering. Children of the same parent are sorted by this character. Use sequential ASCII starting from `!` (0x21).
+- **position** — A **string** that orders siblings, compared as a string. Not a
+  single character: treating it as one caps a parent at ~94 children and then
+  walks out of the legal alphabet. See
+  [Sibling ordering](invariants.md#sibling-ordering-parentindexposition), which
+  covers the alphabet, why a naive second character reorders siblings, and what
+  Figma does when a position is out of range.
 
 ## Node Hierarchy (Design — .fig)
 

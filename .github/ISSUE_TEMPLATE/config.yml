@@ -1,0 +1,12 @@
+blank_issues_enabled: true
+contact_links:
+  - name: How the backlog works
+    url: https://github.com/orgs/OpenFig-org/projects/1
+    about: >
+      Priority, Status and Size live on the project board; type and area live as labels on
+      the issue. Please do not add priority labels — they drift from the board within a week.
+  - name: Measured Figma behaviour
+    url: https://github.com/OpenFig-org/openfig-cli/blob/main/docs/figma-behaviour.md
+    about: >
+      What Figma actually does with a .deck, established by measurement. Several of this
+      repo's open documentation issues were opened against it — worth reading first.

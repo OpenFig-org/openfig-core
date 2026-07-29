@@ -1,0 +1,64 @@
+name: Documentation
+description: The docs are wrong, missing, or teach something that breaks
+labels: ["documentation", "area: docs"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Documentation that is merely absent costs a reader some time. Documentation that is
+        *wrong* costs them a bug they then have to find — this project has paid for that
+        twice, once for a position encoding and once for an empty PostScript name. So the
+        distinction below is the one that sets priority.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Which is it
+      options:
+        - Wrong — following the docs produces a broken result
+        - Missing — behaviour that exists but is undocumented
+        - Stale — was true once, no longer is
+        - Unclear — correct but easy to misread
+    validations:
+      required: true
+
+  - type: input
+    id: where
+    attributes:
+      label: Where
+      description: File and line, or a URL.
+      placeholder: docs/nodes.md:99
+    validations:
+      required: true
+
+  - type: textarea
+    id: says
+    attributes:
+      label: What it currently says
+      description: Quote it, so the claim being corrected is unambiguous.
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: truth
+    attributes:
+      label: What is actually true, and how you know
+      description: >
+        The correction, with the evidence behind it. Measured beats inferred: this project's
+        reference doc records the method beside every claim precisely so it can be re-checked
+        rather than trusted.
+    validations:
+      required: true
+
+  - type: textarea
+    id: consequence
+    attributes:
+      label: What goes wrong if someone believes the current text
+      description: >
+        Optional, but it is what separates a typo from a landmine.
+      placeholder: >
+        Figma rejects the whole file with "Internal error during import" and names nothing,
+        so it costs an evening of bisecting to find.
+    validations:
+      required: false

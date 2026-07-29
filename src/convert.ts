@@ -188,15 +188,6 @@ export function convertDeckToFig(
       strokeAlign: slide.strokeAlign ?? "INSIDE",
     };
 
-    // Re-index frame fill blobs
-    if (frameNode.fillGeometry) {
-      for (const fg of frameNode.fillGeometry) {
-        if (fg.commandsBlob !== undefined) {
-          fg.commandsBlob = copyBlob(fg.commandsBlob);
-        }
-      }
-    }
-
     outputNodes.push(frameNode);
 
     // 4. Bake the INSTANCE contents into the frame
@@ -285,25 +276,6 @@ export function convertDeckToFig(
             }
           }
 
-          // Re-index geometry blobs
-          if (clone.fillGeometry) {
-            for (const fg of clone.fillGeometry) {
-              if (fg.commandsBlob !== undefined) {
-                fg.commandsBlob = copyBlob(fg.commandsBlob);
-              }
-            }
-          }
-          if (clone.strokeGeometry) {
-            for (const sg of clone.strokeGeometry) {
-              if (sg.commandsBlob !== undefined) {
-                sg.commandsBlob = copyBlob(sg.commandsBlob);
-              }
-            }
-          }
-          if (clone.vectorNetworkBlob !== undefined) {
-            clone.vectorNetworkBlob = copyBlob(clone.vectorNetworkBlob);
-          }
-
           return clone;
         });
 
@@ -357,25 +329,6 @@ export function convertDeckToFig(
           }
         }
 
-        // Re-index geometry blobs
-        if (clone.fillGeometry) {
-          for (const fg of clone.fillGeometry) {
-            if (fg.commandsBlob !== undefined) {
-              fg.commandsBlob = copyBlob(fg.commandsBlob);
-            }
-          }
-        }
-        if (clone.strokeGeometry) {
-          for (const sg of clone.strokeGeometry) {
-            if (sg.commandsBlob !== undefined) {
-              sg.commandsBlob = copyBlob(sg.commandsBlob);
-            }
-          }
-        }
-        if (clone.vectorNetworkBlob !== undefined) {
-          clone.vectorNetworkBlob = copyBlob(clone.vectorNetworkBlob);
-        }
-
         return clone;
       });
 
@@ -420,6 +373,38 @@ export function convertDeckToFig(
   targetMeta.file_name = canvasName;
 
   // Build the new FigDocument
+  // Every blob reference, not a hand-picked three.
+  //
+  // This used to re-index `fillGeometry`, `strokeGeometry` and
+  // `vectorNetworkBlob` at the sites that build them, which missed
+  // `derivedTextData.glyphs[].commandsBlob` — the cached glyph outlines, and by
+  // far the most numerous reference in a text-heavy deck. The output table came
+  // out smaller than the source's while nodes still held source indices: one
+  // fixture went from 73 blobs to 1 with references up to 72, another from 245
+  // to 36 with references up to 244. A reference that still fell in range
+  // resolved to the wrong blob; the rest pointed at nothing, which Figma
+  // reports as "Internal error during import" while naming nothing about it.
+  //
+  // Running once over the finished nodes is what makes this exhaustive instead
+  // of a longer list that the next schema addition breaks again. It also has to
+  // be the *only* pass: remapping a field twice would read an output index as a
+  // source index.
+  const remapBlobRefs = (value: any): void => {
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      for (const item of value) remapBlobRefs(item);
+      return;
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (/Blob$/.test(key) && typeof child === "number") {
+        value[key] = copyBlob(child);
+      } else {
+        remapBlobRefs(child);
+      }
+    }
+  };
+  for (const node of outputNodes) remapBlobRefs(node);
+
   const newDoc: FigDocument = {
     header: { prelude: "fig-kiwi", version: deckDoc.header.version },
     nodes: outputNodes,

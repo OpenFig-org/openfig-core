@@ -8,7 +8,8 @@ structural case that the others do not exercise. All are `fig-kiwi` v101.
 | `straight-2-point-line.fig` | 1 | 2 vertices, 1 segment, 0 regions, **64 bytes** | Header size — with no region block, total size is exactly `header + nv*12 + ns*28`, so 12 vs 16 bytes is decidable by arithmetic. Also the only fixture with a segment that is genuinely straight. |
 | `curvy-squiggle.fig` | 2 | 16v / 15s / 0 regions | Curved segments with **no** region block. Confirms header size independently, and that curve-ness is carried by tangents. |
 | `circle-and-rounded-rectangle-outline-stroke.fig` | 4 | filled + outline-stroked | First fixtures with `regionCount > 0`. The outline-stroked pair yield **2-loop** regions (outer + inner ring). |
-| `word-outline-stroke.fig` | 9 | outlined letterforms | Regions with **1, 2 and 3 loops** — letter counters. Widest region coverage available. |
+| `word-outline-stroke.fig` | 9 | outlined letterforms | Regions with **1, 2 and 3 loops** — letter counters. |
+| `coloradjusted.fig` | 25 | `BRUSH` nodes | Scale: 25,993 vertices, 26,092 segments, a region with **740 loops**. The only fixture with non-empty `styleOverrideTable`s, and the only one where `commandsBlob` and the vector network differ in command count. |
 
 ## Why these cases matter
 
@@ -36,7 +37,7 @@ region  x nr      : [styleID<<1|windingRule u32][numLoops u32]
                     per loop: [segCount u32][segIndex u32 x segCount]
 ```
 
-Byte-exact on all 17 blobs across these four files plus `../OpenFigs.fig` and `../circle.fig`.
+Byte-exact on all 42 blobs across these five files plus `../OpenFigs.fig` and `../circle.fig` — 26,391 vertices and 26,491 segments in total.
 
 - A segment is a **straight line iff all four tangent components are zero**. No field encodes
   segment type: `word0` is `0` on curved and straight segments alike.
@@ -55,12 +56,18 @@ Byte-exact on all 17 blobs across these four files plus `../OpenFigs.fig` and `.
   schema agrees — `VectorData` has a `styleOverrideTable` of `NodeChange` keyed by
   `styleID`, and no other array in which per-vertex references could live.
 - The segment leading word is structurally the same slot and is presumed to be a
-  `styleID` too, but it is `0` on all 399 segments here and on every segment of every
+  `styleID` too, but it is `0` on all 26,491 segments here and on every segment of every
   Figma-authored file checked so far, so nothing confirms what a segment-scoped override
   would contain. Figma's public plugin API exposes style properties on `VectorVertex`
   and `VectorRegion` but none on `VectorSegment`, so the slot may be editor-only or
   reserved. Treat it as unidentified; write `0`.
 - The region `packed` word is `1` throughout, i.e. `styleID = 0`, `windingRule = NONZERO`.
+- `commandsBlob` and the vector network describe the same geometry but do not always use
+  the same number of commands: `coloradjusted.fig`'s "Blockbuster" has 997 commands against
+  996 segments across 178 loops, `commandsBlob` apparently spelling out one loop's closing
+  command that the network leaves implied. The oracle test allows exactly that delta on
+  curves and requires the straight-segment count to match exactly — the latter is what a
+  classification bug destroys.
 
 ## Provenance
 

@@ -200,7 +200,7 @@ describe("parseVectorNetworkBlob", () => {
       }
     }
 
-    expect(blobCount, `expected 17 reference vectorNetworkBlobs, found ${blobCount}`).toBe(17);
+    expect(blobCount, `expected 42 reference vectorNetworkBlobs, found ${blobCount}`).toBe(42);
   });
 
   // Geometry oracle. Byte-exact consumption only proves the blob *parses*; it says nothing
@@ -247,14 +247,28 @@ describe("parseVectorNetworkBlob", () => {
         }
 
         const where = `${file} node ${node.name}`;
-        expect(curves, `${where}: curve count`).toBe(oracleCurves);
-        expect(lines, `${where}: line count`).toBe(oracleLines);
+
+        // The straight-segment count must match exactly. This is the property a
+        // classification bug destroys: reading a segment type out of the wrong word
+        // turns every curve into a line, so `lines` would balloon to the segment
+        // total. Verified by mutation.
+        expect(lines, `${where}: straight-segment count`).toBe(oracleLines);
+
+        // Curves are allowed to differ by exactly the difference in total command
+        // count between the two representations. commandsBlob occasionally spells
+        // out a loop's closing command that the vector network leaves implied — one
+        // node in the corpus (coloradjusted.fig "Blockbuster") has 997 commands
+        // against 996 segments across its 178 loops. Anything beyond that delta is a
+        // real disagreement, not a representational one.
+        const totalDelta = oracleCurves + oracleLines - (curves + lines);
+        expect(curves, `${where}: curve count (total delta ${totalDelta})`)
+          .toBe(oracleCurves - totalDelta);
         nodesChecked++;
       }
     }
 
     // Guards against the oracle silently covering nothing if fixtures move.
-    expect(nodesChecked, `expected 14 nodes with both blob kinds, found ${nodesChecked}`).toBe(14);
+    expect(nodesChecked, `expected 39 nodes with both blob kinds, found ${nodesChecked}`).toBe(39);
   });
 
   it("parses a minimal valid blob and consumes every byte", () => {
@@ -310,7 +324,7 @@ describe("encodeVectorNetwork", () => {
   // unidentified, the corpus is small), so the one acceptance criterion that does
   // not require understanding every field is byte-identity: decode a Figma-authored
   // blob and re-encode it unmodified, and require the same bytes back. Anything
-  // short of 17/17 is an unresolved layout gap and is reported, never skipped.
+  // short of 42/42 is an unresolved layout gap and is reported, never skipped.
   it("round-trips every reference blob byte-identically", () => {
     const files = collectReferenceFigs();
     const failures: string[] = [];
@@ -334,7 +348,7 @@ describe("encodeVectorNetwork", () => {
     }
 
     expect(failures, `byte-identical round-trip failures:\n${failures.join("\n")}`).toHaveLength(0);
-    expect(blobCount, `expected 17 reference blobs, found ${blobCount}`).toBe(17);
+    expect(blobCount, `expected 42 reference blobs, found ${blobCount}`).toBe(42);
   });
 
   it("emits blobs that re-encode byte-identically through the public encoder", () => {

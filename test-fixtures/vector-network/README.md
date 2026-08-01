@@ -40,12 +40,26 @@ Byte-exact on all 17 blobs across these four files plus `../OpenFigs.fig` and `.
 
 - A segment is a **straight line iff all four tangent components are zero**. No field encodes
   segment type: `word0` is `0` on curved and straight segments alike.
-- The vertex leading word is **handle mirroring mode**, and it is **not** always `0`:
-  across these fixtures it is `0` on 385 vertices and `1` on 13 (all in
-  `curvy-squiggle.fig`, whose curves were drawn by hand). It must be preserved verbatim
-  through a decode/encode round-trip — clobbering it to `0` breaks byte identity.
-- The segment leading `word0` **is** `0` throughout (399 of 399). Its meaning is
-  unidentified and it is not required to reconstruct geometry.
+- The vertex leading word is a **`styleID`** — an index into the node's
+  `vectorData.styleOverrideTable`, where `0` means "no override". It is **not** always
+  `0`: across these fixtures it is `0` on 385 vertices and `1` on 13, all in
+  `curvy-squiggle.fig`, whose node carries exactly one override entry
+  `{styleID: 1, handleMirroring: "ANGLE"}`. It must be preserved verbatim through a
+  decode/encode round-trip — clobbering it to `0` breaks byte identity.
+
+  This was first read as a handle-mirroring enum, because that lone fixture's override
+  has `styleID: 1` and `VectorMirror.ANGLE` is also `1` — indistinguishable from one
+  file. Other Figma files settle it: override entries there carry six properties
+  (`cornerRadius`, `strokeCap`, `strokeJoin`, `handleMirroring`, `cornerSmoothing`),
+  which cannot fit in one u32, and appear with `styleID` 1 and 2 in sequence. The Kiwi
+  schema agrees — `VectorData` has a `styleOverrideTable` of `NodeChange` keyed by
+  `styleID`, and no other array in which per-vertex references could live.
+- The segment leading word is structurally the same slot and is presumed to be a
+  `styleID` too, but it is `0` on all 399 segments here and on every segment of every
+  Figma-authored file checked so far, so nothing confirms what a segment-scoped override
+  would contain. Figma's public plugin API exposes style properties on `VectorVertex`
+  and `VectorRegion` but none on `VectorSegment`, so the slot may be editor-only or
+  reserved. Treat it as unidentified; write `0`.
 - The region `packed` word is `1` throughout, i.e. `styleID = 0`, `windingRule = NONZERO`.
 
 ## Provenance

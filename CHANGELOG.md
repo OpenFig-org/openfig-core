@@ -5,6 +5,17 @@ All notable changes to `openfig-core` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-08-01
+
+### Fixed
+
+- **Compound paths were encoded as separate regions instead of loops of one region.** `encodeVectorNetworkBlob` closed a region at every `M`, so a glyph and its counter, or the two rings of an outline-stroked shape, became independent filled areas — the counter fills in rather than punching through. Figma writes them as multiple loops of a single region; reference blobs carry regions of 1, 2 and 3 loops. Each entry in `pathCommandsList` now yields one region whose loops are its sub-paths. The 0.4.0 round-trip test could not catch this: it only re-encodes networks that were *decoded*, so it validates the byte writer completely and the network builder not at all.
+- **`encodeVectorNetworkBlob` had no way to omit regions.** Open stroked paths need none — a region asks Figma to fill the bounded area, which on an open path closes it visually as a "lens" between the endpoints even with no fill paint. Added `{ emitRegions }`, defaulting to `true`.
+
+### Changed
+
+- **`VectorNetworkVertex.handleMirroring` is renamed `styleID`.** The vertex's leading word is an index into the node's `vectorData.styleOverrideTable`, not a `VectorMirror` enum. The two were indistinguishable in the only fixture with a non-zero value, whose single override entry is `{styleID: 1, handleMirroring: "ANGLE"}` — and `ANGLE` is also `1`. Other Figma files settle it: override entries carry six properties (`cornerRadius`, `strokeCap`, `strokeJoin`, `handleMirroring`, `cornerSmoothing`), which cannot be encoded in one u32, and appear with `styleID` 1 and 2 in sequence. The Kiwi schema agrees — `VectorData` holds a `styleOverrideTable` of `NodeChange` keyed by `styleID`, with no other array for per-vertex references. Byte output is unchanged; authoring a non-zero value without a matching table entry produces a dangling reference.
+
 ## [0.4.0] - 2026-08-01
 
 ### Added
@@ -36,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Isomorphic Parser & Encoder** — Initial open-source release of the isomorphic `.fig` and `.deck` file parser and Kiwi binary encoder, allowing reading and writing of Figma's schema-driven format in both Node.js and browser runtimes.
 - **Kiwi Schema Interoperability** — Integration of schema-driven Kiwi binary serialization, resolving zip archives (`fzstd`/`fflate` decoders), geometry nodes, vector path conversions, and gradient color structures.
 
+[0.4.1]: https://github.com/OpenFig-org/openfig-core/releases/tag/v0.4.1
 [0.4.0]: https://github.com/OpenFig-org/openfig-core/releases/tag/v0.4.0
 [0.3.7]: https://github.com/OpenFig-org/openfig-core/releases/tag/v0.3.7
 [0.3.6]: https://github.com/OpenFig-org/openfig-core/releases/tag/v0.3.6

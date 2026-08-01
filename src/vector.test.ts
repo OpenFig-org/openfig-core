@@ -347,6 +347,56 @@ describe("encodeVectorNetwork", () => {
     expect(Buffer.from(reencoded).equals(Buffer.from(blob))).toBe(true);
   });
 
+  // The byte-identical round-trip above validates the byte *writer* completely and
+  // the network *builder* not at all — it only ever re-encodes networks that were
+  // decoded, never ones assembled from path commands. These cover that gap.
+  it("groups sub-paths as loops of one region, not one region each", () => {
+    // Figma writes a letter's counter, or the two rings of an outline-stroked
+    // shape, as multiple loops of a single region. One region per sub-path makes
+    // each a separate filled area, so counters fill in instead of punching through.
+    const blob = encodeVectorNetworkBlob([
+      parseSVGPathData("M0 0 L100 0 L100 100 Z M20 20 L60 20 L60 60 Z"),
+    ]);
+    const network = parseVectorNetworkBlob(blob);
+
+    expect(network.regions, "one path list yields one region").toHaveLength(1);
+    expect(network.regions[0].loops, "each sub-path is a loop").toHaveLength(2);
+    expect(network.regions[0].loops[0].length).toBe(3);
+    expect(network.regions[0].loops[1].length).toBe(3);
+    // Loops must reference disjoint segments — a flat merge would make Figma join
+    // the end of one sub-path to the start of the next.
+    const [outer, inner] = network.regions[0].loops;
+    expect(outer.some((index) => inner.includes(index))).toBe(false);
+  });
+
+  it("gives each path list its own region", () => {
+    const blob = encodeVectorNetworkBlob([
+      parseSVGPathData("M0 0 L10 0 L10 10 Z"),
+      parseSVGPathData("M20 20 L30 20 L30 30 Z"),
+    ]);
+    const network = parseVectorNetworkBlob(blob);
+
+    expect(network.regions).toHaveLength(2);
+    expect(network.regions.every((region) => region.loops.length === 1)).toBe(true);
+  });
+
+  it("omits regions entirely when emitRegions is false", () => {
+    // Open stroked paths: a region asks Figma to fill the bounded area, which on
+    // an open path closes it visually — a "lens" between the endpoints — even
+    // with no fill paint set.
+    const commands = parseSVGPathData("M0 0 C20 40 80 40 100 0");
+    const withRegions = parseVectorNetworkBlob(encodeVectorNetworkBlob([commands]));
+    const without = parseVectorNetworkBlob(
+      encodeVectorNetworkBlob([commands], { emitRegions: false }),
+    );
+
+    expect(withRegions.regions.length).toBeGreaterThan(0);
+    expect(without.regions).toHaveLength(0);
+    // Geometry is otherwise identical — only the region block is dropped.
+    expect(without.vertices).toEqual(withRegions.vertices);
+    expect(without.segments).toEqual(withRegions.segments);
+  });
+
   it("confines emitted word0 to Figma's observed domain (0, never 4)", () => {
     const blob = encodeVectorNetworkBlob([
       parseSVGPathData("M0 0 L100 0 C100 50 50 100 0 100 Z"),

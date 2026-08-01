@@ -1,6 +1,6 @@
 {
   "name": "openfig-core",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "packageManager": "npm@11.17.0",
   "description": "Isomorphic .fig file parser — reads Figma binary format in Node.js and browsers",
   "type": "module",

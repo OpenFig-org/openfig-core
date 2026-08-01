@@ -453,12 +453,33 @@ export function encodeCommandsBlob(
   return new Uint8Array(buffer, 0, offset);
 }
 
-export function encodeVectorNetworkBlob(pathCommandsList: readonly (readonly VectorPathCommand[])[]): Uint8Array {
+/**
+ * Build a vector network from SVG-style path commands and encode it.
+ *
+ * Each entry in `pathCommandsList` becomes **one region**, and each `M…Z`
+ * sub-path within it becomes a **loop** of that region. That grouping is what
+ * Figma writes: reference blobs carry regions of 1, 2 and 3 loops — a letter's
+ * counter, or the inner and outer ring of an outline-stroked shape, are loops of
+ * a single region rather than separate regions. Emitting one region per sub-path
+ * makes Figma treat each as its own filled area, so counters fill in instead of
+ * punching through.
+ *
+ * @param pathCommandsList one entry per path; each becomes a region
+ * @param emitRegions      set false for open, stroked paths. A region asks Figma
+ *                         to fill the area bounded by the loop, which on an open
+ *                         path closes it visually — a "lens" between the
+ *                         endpoints — even with no fill paint set.
+ */
+export function encodeVectorNetworkBlob(
+  pathCommandsList: readonly (readonly VectorPathCommand[])[],
+  { emitRegions = true }: { emitRegions?: boolean } = {},
+): Uint8Array {
   const vertices: VectorNetworkVertex[] = [];
   const segments: VectorNetworkSegment[] = [];
   const regions: VectorNetworkRegion[] = [];
 
   for (const pathCommands of pathCommandsList) {
+    const loops: number[][] = [];
     let regionSegments: number[] = [];
     let firstVertex = -1;
     let prevVertex = -1;
@@ -467,21 +488,20 @@ export function encodeVectorNetworkBlob(pathCommandsList: readonly (readonly Vec
 
     for (const command of pathCommands) {
       if (command.type === "M") {
-        // Each sub-path (M...Z sequence) becomes its own region so Figma
-        // strokes compound paths correctly (e.g. counter holes in letters).
+        // A new sub-path starts a new loop within the same region.
         if (regionSegments.length > 0) {
-          regions.push({ windingRule: "NONZERO", styleID: 0, loops: [regionSegments] });
+          loops.push(regionSegments);
           regionSegments = [];
         }
         const vertexIndex = vertices.length;
-        vertices.push({ x: command.x, y: command.y, handleMirroring: 0 });
+        vertices.push({ x: command.x, y: command.y, styleID: 0 });
         firstVertex = vertexIndex;
         prevVertex = vertexIndex;
         prevX = command.x;
         prevY = command.y;
       } else if (command.type === "L") {
         const vertexIndex = vertices.length;
-        vertices.push({ x: command.x, y: command.y, handleMirroring: 0 });
+        vertices.push({ x: command.x, y: command.y, styleID: 0 });
         if (prevVertex >= 0) {
           regionSegments.push(segments.length);
           segments.push({
@@ -495,7 +515,7 @@ export function encodeVectorNetworkBlob(pathCommandsList: readonly (readonly Vec
         prevY = command.y;
       } else if (command.type === "C") {
         const vertexIndex = vertices.length;
-        vertices.push({ x: command.x, y: command.y, handleMirroring: 0 });
+        vertices.push({ x: command.x, y: command.y, styleID: 0 });
         if (prevVertex >= 0) {
           const startDx = command.c1x - prevX;
           const startDy = command.c1y - prevY;
@@ -546,7 +566,10 @@ export function encodeVectorNetworkBlob(pathCommandsList: readonly (readonly Vec
       }
     }
 
-    regions.push({ windingRule: "NONZERO", styleID: 0, loops: [regionSegments] });
+    if (regionSegments.length > 0) loops.push(regionSegments);
+    if (emitRegions && loops.length > 0) {
+      regions.push({ windingRule: "NONZERO", styleID: 0, loops });
+    }
   }
 
   return encodeVectorNetwork({ vertices, segments, regions });
@@ -556,12 +579,24 @@ export interface VectorNetworkVertex {
   x: number;
   y: number;
   /**
-   * The vertex's leading u32 — Figma's handle-mirroring mode. Observed values are
-   * 0 and 1 across the reference corpus (openfig once wrote 4 here, which Figma
-   * never emits). It does not affect rendered geometry, but it is preserved
-   * verbatim so a decoded blob re-encodes byte-identically.
+   * The vertex's leading u32 — an index into the node's
+   * `vectorData.styleOverrideTable`, where 0 means "no override". Observed
+   * values are 0 and 1 across the reference corpus (openfig once wrote 4 here,
+   * which Figma never emits).
+   *
+   * This was previously named `handleMirroring`, because the one fixture with a
+   * non-zero value has a single override entry `{styleID: 1, handleMirroring:
+   * "ANGLE"}` — and `VectorMirror.ANGLE` is also 1, so the two readings were
+   * indistinguishable from that file alone. Other Figma files carry override
+   * entries with six properties (cornerRadius, strokeCap, strokeJoin,
+   * handleMirroring, cornerSmoothing), which cannot be encoded in one u32 — only
+   * an index can reference them — and carry styleIDs 1 and 2 in sequence.
+   *
+   * It does not affect rendered geometry, but it is preserved verbatim so a
+   * decoded blob re-encodes byte-identically. Authoring a non-zero value without
+   * a matching `styleOverrideTable` entry produces a dangling reference.
    */
-  handleMirroring: number;
+  styleID: number;
 }
 
 export interface VectorNetworkSegment {
@@ -590,7 +625,7 @@ export interface VectorNetwork {
  *
  * Verified byte-exact layout (little-endian):
  *   header   12B : [vertexCount u32][segmentCount u32][regionCount u32]
- *   vertex   12B : [handleMirroring u32][x f32][y f32]
+ *   vertex   12B : [styleID u32][x f32][y f32]
  *   segment  28B : [word0 u32][startVertex u32][tsx f32][tsy f32]
  *                   [endVertex u32][tex f32][tey f32]
  *   region        : [packed u32][numLoops u32]
@@ -633,10 +668,10 @@ export function parseVectorNetworkBlob(bytes: Uint8Array): VectorNetwork {
 
   const vertices: VectorNetworkVertex[] = [];
   for (let i = 0; i < vertexCount; i++) {
-    const handleMirroring = view.getUint32(offset, true); offset += 4;
+    const styleID = view.getUint32(offset, true); offset += 4;
     const x = view.getFloat32(offset, true); offset += 4;
     const y = view.getFloat32(offset, true); offset += 4;
-    vertices.push({ x, y, handleMirroring });
+    vertices.push({ x, y, styleID });
   }
 
   const segments: VectorNetworkSegment[] = [];
@@ -722,7 +757,7 @@ export type VectorNetworkInput = Pick<VectorNetwork, "vertices" | "segments" | "
  * Encode structured vector-network geometry into a Figma `vectorNetworkBlob`.
  *
  * Emits the exact layout `parseVectorNetworkBlob` reads (which see for the field
- * table): 12-byte header; vertex `[handleMirroring, x, y]`; segment `[word0,
+ * table): 12-byte header; vertex `[styleID, x, y]`; segment `[word0,
  * startVertex, tsx, tsy, endVertex, tex, tey]`; region `[styleID<<1|windingRule,
  * numLoops, (segCount, indices)×numLoops]`. The vertex handle-mirroring word is
  * written back as parsed; the segment word0 is written as 0, the only value
@@ -748,7 +783,7 @@ export function encodeVectorNetwork(network: VectorNetworkInput): Uint8Array {
   view.setUint32(offset, network.regions.length, true); offset += 4;
 
   for (const vertex of network.vertices) {
-    view.setUint32(offset, vertex.handleMirroring, true); offset += 4;
+    view.setUint32(offset, vertex.styleID, true); offset += 4;
     view.setFloat32(offset, vertex.x, true); offset += 4;
     view.setFloat32(offset, vertex.y, true); offset += 4;
   }

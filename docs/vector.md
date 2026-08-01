@@ -79,7 +79,7 @@ The layout below is verified byte-exact on the Figma-authored reference corpus
 
 ```
 header   12B : vertexCount(u32)  segmentCount(u32)  regionCount(u32)
-vertex   12B : handleMirroring(u32)  x(f32)  y(f32)
+vertex   12B : styleID(u32)  x(f32)  y(f32)
 segment  28B : word0(u32)  startVertex(u32)  tangentStartX(f32)  tangentStartY(f32)
               endVertex(u32)  tangentEndX(f32)  tangentEndY(f32)
 region       : packed(u32)  numLoops(u32)

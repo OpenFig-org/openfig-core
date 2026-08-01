@@ -364,6 +364,50 @@ describe("encodeVectorNetwork", () => {
   // The byte-identical round-trip above validates the byte *writer* completely and
   // the network *builder* not at all — it only ever re-encodes networks that were
   // decoded, never ones assembled from path commands. These cover that gap.
+  // Byte-identity says nothing about whether the *geometry* survived: it only
+  // re-encodes networks that were decoded, and never inspects isStraight or
+  // coordinates. A classification that was wrong in both directions at once would
+  // round-trip byte-perfectly and still be wrong. These assert the semantics.
+  it("preserves cubic classification and control points through encode/decode", () => {
+    const network = parseVectorNetworkBlob(
+      encodeVectorNetworkBlob([parseSVGPathData("M0 0 C20 40 80 40 100 0 Z")]),
+    );
+
+    const curved = network.segments.filter((segment) => !segment.isStraight);
+    expect(curved, "the C command must survive as a cubic").toHaveLength(1);
+
+    // Control points are stored as deltas from their endpoints:
+    //   c1 = start + (dx, dy) = (0,0) + (20,40)     → (20, 40)
+    //   c2 = end   + (dx, dy) = (100,0) + (-20,40)  → (80, 40)
+    const [segment] = curved;
+    expect(segment.start.dx).toBeCloseTo(20, 5);
+    expect(segment.start.dy).toBeCloseTo(40, 5);
+    expect(segment.end.dx).toBeCloseTo(-20, 5);
+    expect(segment.end.dy).toBeCloseTo(40, 5);
+
+    const start = network.vertices[segment.start.vertex];
+    const end = network.vertices[segment.end.vertex];
+    expect([start.x, start.y]).toEqual([0, 0]);
+    expect([end.x, end.y]).toEqual([100, 0]);
+  });
+
+  it("preserves straight classification and vertices through encode/decode", () => {
+    const network = parseVectorNetworkBlob(
+      encodeVectorNetworkBlob([parseSVGPathData("M0 0 L100 0 L50 80 Z")]),
+    );
+
+    expect(network.segments, "three sides of a closed triangle").toHaveLength(3);
+    expect(
+      network.segments.every((segment) => segment.isStraight),
+      "every segment of a polygon must be straight",
+    ).toBe(true);
+    expect(network.vertices.map((vertex) => [vertex.x, vertex.y])).toEqual([
+      [0, 0],
+      [100, 0],
+      [50, 80],
+    ]);
+  });
+
   it("groups sub-paths as loops of one region, not one region each", () => {
     // Figma writes a letter's counter, or the two rings of an outline-stroked
     // shape, as multiple loops of a single region. One region per sub-path makes

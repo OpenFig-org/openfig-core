@@ -67,6 +67,57 @@ The resolved blob is a command stream:
 Coordinates are already in **node size space**. Consumers do not need to rescale
 from `vectorNetworkBlob.normalizedSize` just to render the decoded path.
 
+## `vectorNetworkBlob` binary format
+
+`vectorData.vectorNetworkBlob` is a blob index into `doc.message.blobs`. The
+resolved blob is a little-endian binary vector network: vertices, segments
+carrying bezier tangent deltas, and regions grouping segment indices into closed
+loops.
+
+The layout below is verified byte-exact on the Figma-authored reference corpus
+(17 blobs across 6 files, format versions 101 and 106):
+
+```
+header   12B : vertexCount(u32)  segmentCount(u32)  regionCount(u32)
+vertex   12B : handleMirroring(u32)  x(f32)  y(f32)
+segment  28B : word0(u32)  startVertex(u32)  tangentStartX(f32)  tangentStartY(f32)
+              endVertex(u32)  tangentEndX(f32)  tangentEndY(f32)
+region       : packed(u32)  numLoops(u32)
+               per loop: segCount(u32)  segIndex(u32) × segCount
+```
+
+- `packed` decodes as `windingRule = (packed & 1) ? "NONZERO" : "ODD"` and
+  `styleID = packed >> 1`. In every reference region `packed === 1`.
+- The vertex's leading word is Figma's **handle-mirroring** mode. Observed values
+  are `0` and `1`. It does not affect rendered geometry, but it is preserved
+  verbatim so a decoded blob re-encodes byte-for-byte.
+- The segment's leading `word0` is `0` throughout the reference corpus; its
+  meaning is unknown and it is never used for geometry.
+
+### Curve classification
+
+There is **no segment-type field**. A segment is a straight line if and only if
+all four tangent components are zero:
+
+```
+isStraight = tangentStartX === 0 && tangentStartY === 0 &&
+             tangentEndX   === 0 && tangentEndY   === 0
+```
+
+For a cubic segment from vertex `A` to vertex `B`, the SVG control points are
+`(A.x + tangentStartX, A.y + tangentStartY)` and
+`(B.x + tangentEndX, B.y + tangentEndY)`.
+
+### Fidelity guarantee
+
+`parseVectorNetworkBlob` followed by `encodeVectorNetwork` reproduces every
+Figma-authored reference blob **byte-for-byte (17/17)**. That round-trip is the
+acceptance criterion the format is held to: it requires no theory of what each
+field means, only that we put back what we found. Newly authored geometry
+(`encodeVectorNetworkBlob`) confines every emitted value to Figma's observed
+domain — in particular the segment `word0` is `0`, never the `4` openfig once
+wrote, which appears nowhere in Figma output and was a one-scan fingerprint.
+
 ## Per-path fills
 
 `fillGeometry` paths can carry `styleID`s. These resolve against
@@ -145,6 +196,18 @@ This is intended for **read-only rendering** in consumers such as:
 - PNG rasterizers
 - headless analyzers
 
+### `parseVectorNetworkBlob(bytes)`
+
+Decodes a resolved `vectorNetworkBlob` into structured geometry — `vertices`,
+`segments` (each carrying its tangent deltas and an `isStraight` flag), and
+`regions` (winding rule, style id, and ordered loops of segment indices). See
+[`vectorNetworkBlob` binary format](#vectornetworkblob-binary-format) for the
+layout and curve-classification rule.
+
+The decoder throws rather than returning partial results on a short buffer, a
+declared count running past the end, an out-of-range vertex or segment index, or
+trailing bytes. `bytesConsumed` equals the input length on success.
+
 ### Write-side helpers
 
 `openfig-core` also exposes minimal write-side helpers for native VECTOR
@@ -174,7 +237,17 @@ Encodes parsed path commands into a `commandsBlob` byte stream suitable for
 ### `encodeVectorNetworkBlob(pathCommandsList)`
 
 Builds a minimal `vectorNetworkBlob` from path commands in normalized-space
-coordinates.
+coordinates. Emits Figma's verified layout (see above); authored vertices use
+handle-mirroring `0` and segment `word0` `0`, both within Figma's observed
+domain.
+
+### `encodeVectorNetwork(network)`
+
+Encodes a structured `VectorNetwork` (or any `{ vertices, segments, regions }`)
+into a `vectorNetworkBlob` in Figma's verified layout. This is the structured
+inverse of `parseVectorNetworkBlob`: a Figma-authored blob decoded and re-encoded
+here comes back byte-for-byte identical. `encodeVectorNetworkBlob` builds the
+structure from path commands and delegates to this function.
 
 ### `appendVectorPayloadToDocument(doc, input)`
 
@@ -282,14 +355,16 @@ What the current helpers solve:
 
 - read-side decode of `fillGeometry` / `strokeGeometry`
 - command-blob encoding for supported path commands
-- minimal `vectorNetworkBlob` authoring
+- `vectorNetworkBlob` decode (`parseVectorNetworkBlob`) and byte-identical
+  re-encode (`encodeVectorNetwork`), verified 17/17 on the Figma-authored corpus
+- `vectorNetworkBlob` authoring in Figma's verified layout
+  (`encodeVectorNetworkBlob`)
 - append-only blob/reference generation for new VECTOR payloads
 - per-path fill style overrides via `styleID` + `styleOverrideTable`
 - SVG path serialization, affine transformation, and stroke enum mapping
 
 What they still do **not** solve:
 
-- no `vectorNetworkBlob` decode API
 - no boolean ops or vector edit semantics
 - no point/handle editing
 - no general stroke-outline expansion from SVG stroke style into `strokeGeometry`

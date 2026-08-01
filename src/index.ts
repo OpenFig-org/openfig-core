@@ -7,6 +7,7 @@ export { extractRenderableGradientFill, resolveGradientGeometry } from "./gradie
 export {
   appendVectorPayloadToDocument,
   encodeCommandsBlob,
+  encodeVectorNetwork,
   encodeVectorNetworkBlob,
   geometryBlobToSVGPath,
   getBlobBytes,
@@ -35,6 +36,7 @@ export type {
   ResolvedVectorNodePaths,
   VectorGeometryInput,
   VectorNetwork,
+  VectorNetworkInput,
   VectorNetworkRegion,
   VectorNetworkSegment,
   VectorNetworkVertex,

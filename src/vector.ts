@@ -4,9 +4,6 @@ const CMD_CLOSE = 0;
 const CMD_MOVE_TO = 1;
 const CMD_LINE_TO = 2;
 const CMD_CUBIC_TO = 4;
-const SEGMENT_LINE = 0;
-const SEGMENT_CUBIC = 4;
-const DEFAULT_HANDLE_MIRRORING = 4;
 
 type GeometryRef = {
   commandsBlob?: number;
@@ -457,9 +454,9 @@ export function encodeCommandsBlob(
 }
 
 export function encodeVectorNetworkBlob(pathCommandsList: readonly (readonly VectorPathCommand[])[]): Uint8Array {
-  const vertices: Array<{ x: number; y: number }> = [];
-  const segments: Array<{ s: number; tsx: number; tsy: number; e: number; tex: number; tey: number; t: number }> = [];
-  const regions: number[][] = [];
+  const vertices: VectorNetworkVertex[] = [];
+  const segments: VectorNetworkSegment[] = [];
+  const regions: VectorNetworkRegion[] = [];
 
   for (const pathCommands of pathCommandsList) {
     let regionSegments: number[] = [];
@@ -473,38 +470,42 @@ export function encodeVectorNetworkBlob(pathCommandsList: readonly (readonly Vec
         // Each sub-path (M...Z sequence) becomes its own region so Figma
         // strokes compound paths correctly (e.g. counter holes in letters).
         if (regionSegments.length > 0) {
-          regions.push(regionSegments);
+          regions.push({ windingRule: "NONZERO", styleID: 0, loops: [regionSegments] });
           regionSegments = [];
         }
         const vertexIndex = vertices.length;
-        vertices.push({ x: command.x, y: command.y });
+        vertices.push({ x: command.x, y: command.y, handleMirroring: 0 });
         firstVertex = vertexIndex;
         prevVertex = vertexIndex;
         prevX = command.x;
         prevY = command.y;
       } else if (command.type === "L") {
         const vertexIndex = vertices.length;
-        vertices.push({ x: command.x, y: command.y });
+        vertices.push({ x: command.x, y: command.y, handleMirroring: 0 });
         if (prevVertex >= 0) {
           regionSegments.push(segments.length);
-          segments.push({ s: prevVertex, tsx: 0, tsy: 0, e: vertexIndex, tex: 0, tey: 0, t: SEGMENT_LINE });
+          segments.push({
+            start: { vertex: prevVertex, dx: 0, dy: 0 },
+            end: { vertex: vertexIndex, dx: 0, dy: 0 },
+            isStraight: true,
+          });
         }
         prevVertex = vertexIndex;
         prevX = command.x;
         prevY = command.y;
       } else if (command.type === "C") {
         const vertexIndex = vertices.length;
-        vertices.push({ x: command.x, y: command.y });
+        vertices.push({ x: command.x, y: command.y, handleMirroring: 0 });
         if (prevVertex >= 0) {
+          const startDx = command.c1x - prevX;
+          const startDy = command.c1y - prevY;
+          const endDx = command.c2x - command.x;
+          const endDy = command.c2y - command.y;
           regionSegments.push(segments.length);
           segments.push({
-            s: prevVertex,
-            tsx: command.c1x - prevX,
-            tsy: command.c1y - prevY,
-            e: vertexIndex,
-            tex: command.c2x - command.x,
-            tey: command.c2y - command.y,
-            t: SEGMENT_CUBIC,
+            start: { vertex: prevVertex, dx: startDx, dy: startDy },
+            end: { vertex: vertexIndex, dx: endDx, dy: endDy },
+            isStraight: startDx === 0 && startDy === 0 && endDx === 0 && endDy === 0,
           });
         }
         prevVertex = vertexIndex;
@@ -524,13 +525,17 @@ export function encodeVectorNetworkBlob(pathCommandsList: readonly (readonly Vec
             // a degenerate tangent, producing wrong miter angles (visible as
             // notches at sharp corners like the "g" terminal).
             const lastSeg = segments[segments.length - 1];
-            if (lastSeg && lastSeg.e === prevVertex) {
-              lastSeg.e = firstVertex;
+            if (lastSeg && lastSeg.end.vertex === prevVertex) {
+              lastSeg.end.vertex = firstVertex;
               vertices.pop();
             }
           } else {
             regionSegments.push(segments.length);
-            segments.push({ s: prevVertex, tsx: 0, tsy: 0, e: firstVertex, tex: 0, tey: 0, t: SEGMENT_LINE });
+            segments.push({
+              start: { vertex: prevVertex, dx: 0, dy: 0 },
+              end: { vertex: firstVertex, dx: 0, dy: 0 },
+              isStraight: true,
+            });
           }
         }
         if (firstVertex >= 0) {
@@ -541,53 +546,22 @@ export function encodeVectorNetworkBlob(pathCommandsList: readonly (readonly Vec
       }
     }
 
-    regions.push(regionSegments);
+    regions.push({ windingRule: "NONZERO", styleID: 0, loops: [regionSegments] });
   }
 
-  let regionsByteLength = 0;
-  for (const region of regions) regionsByteLength += 4 + 4 + (region.length * 4) + 4;
-  const totalByteLength = 16 + (vertices.length * 12) + (segments.length * 28) + regionsByteLength;
-
-  const buffer = new ArrayBuffer(totalByteLength);
-  const view = new DataView(buffer);
-  let offset = 0;
-
-  view.setUint32(offset, vertices.length, true); offset += 4;
-  view.setUint32(offset, segments.length, true); offset += 4;
-  view.setUint32(offset, regions.length, true); offset += 4;
-  view.setUint32(offset, 1, true); offset += 4;
-
-  for (const vertex of vertices) {
-    view.setFloat32(offset, vertex.x, true); offset += 4;
-    view.setFloat32(offset, vertex.y, true); offset += 4;
-    view.setUint32(offset, DEFAULT_HANDLE_MIRRORING, true); offset += 4;
-  }
-
-  for (const segment of segments) {
-    view.setUint32(offset, segment.s, true); offset += 4;
-    view.setFloat32(offset, segment.tsx, true); offset += 4;
-    view.setFloat32(offset, segment.tsy, true); offset += 4;
-    view.setUint32(offset, segment.e, true); offset += 4;
-    view.setFloat32(offset, segment.tex, true); offset += 4;
-    view.setFloat32(offset, segment.tey, true); offset += 4;
-    view.setUint32(offset, segment.t, true); offset += 4;
-  }
-
-  for (const region of regions) {
-    view.setUint32(offset, 1, true); offset += 4;
-    view.setUint32(offset, region.length, true); offset += 4;
-    for (const segmentIndex of region) {
-      view.setUint32(offset, segmentIndex, true); offset += 4;
-    }
-    view.setUint32(offset, 1, true); offset += 4;
-  }
-
-  return new Uint8Array(buffer, 0, offset);
+  return encodeVectorNetwork({ vertices, segments, regions });
 }
 
 export interface VectorNetworkVertex {
   x: number;
   y: number;
+  /**
+   * The vertex's leading u32 — Figma's handle-mirroring mode. Observed values are
+   * 0 and 1 across the reference corpus (openfig once wrote 4 here, which Figma
+   * never emits). It does not affect rendered geometry, but it is preserved
+   * verbatim so a decoded blob re-encodes byte-identically.
+   */
+  handleMirroring: number;
 }
 
 export interface VectorNetworkSegment {
@@ -616,7 +590,7 @@ export interface VectorNetwork {
  *
  * Verified byte-exact layout (little-endian):
  *   header   12B : [vertexCount u32][segmentCount u32][regionCount u32]
- *   vertex   12B : [word0 u32][x f32][y f32]
+ *   vertex   12B : [handleMirroring u32][x f32][y f32]
  *   segment  28B : [word0 u32][startVertex u32][tsx f32][tsy f32]
  *                   [endVertex u32][tex f32][tey f32]
  *   region        : [packed u32][numLoops u32]
@@ -625,9 +599,11 @@ export interface VectorNetwork {
  * `packed` decodes as windingRule = (packed & 1) ? "NONZERO" : "ODD",
  * styleID = packed >> 1.
  *
- * `word0` is 0 on every reference vertex and segment; its meaning is unknown
- * and it is deliberately not used. A segment is straight iff all four tangent
- * components are zero — there is no segment-type field.
+ * The vertex's leading word is Figma's handle-mirroring mode (observed 0 and 1);
+ * it is preserved verbatim for byte-identical re-encoding. The segment's leading
+ * word is 0 throughout the reference corpus and its meaning is unknown — it is
+ * never used. A segment is straight iff all four tangent components are zero;
+ * there is no segment-type field.
  */
 export function parseVectorNetworkBlob(bytes: Uint8Array): VectorNetwork {
   if (bytes.length < 12) {
@@ -657,10 +633,10 @@ export function parseVectorNetworkBlob(bytes: Uint8Array): VectorNetwork {
 
   const vertices: VectorNetworkVertex[] = [];
   for (let i = 0; i < vertexCount; i++) {
-    offset += 4; // word0 — meaning unknown, unused
+    const handleMirroring = view.getUint32(offset, true); offset += 4;
     const x = view.getFloat32(offset, true); offset += 4;
     const y = view.getFloat32(offset, true); offset += 4;
-    vertices.push({ x, y });
+    vertices.push({ x, y, handleMirroring });
   }
 
   const segments: VectorNetworkSegment[] = [];
@@ -737,6 +713,69 @@ export function parseVectorNetworkBlob(bytes: Uint8Array): VectorNetwork {
   }
 
   return { vertices, segments, regions, bytesConsumed: offset };
+}
+
+/** The geometry `encodeVectorNetwork` needs — a parsed network minus `bytesConsumed`. */
+export type VectorNetworkInput = Pick<VectorNetwork, "vertices" | "segments" | "regions">;
+
+/**
+ * Encode structured vector-network geometry into a Figma `vectorNetworkBlob`.
+ *
+ * Emits the exact layout `parseVectorNetworkBlob` reads (which see for the field
+ * table): 12-byte header; vertex `[handleMirroring, x, y]`; segment `[word0,
+ * startVertex, tsx, tsy, endVertex, tex, tey]`; region `[styleID<<1|windingRule,
+ * numLoops, (segCount, indices)×numLoops]`. The vertex handle-mirroring word is
+ * written back as parsed; the segment word0 is written as 0, the only value
+ * observed in Figma-authored output. A Figma-authored blob decoded and re-encoded
+ * here comes back byte-for-byte identical — the acceptance criterion verified by
+ * the corpus round-trip test.
+ */
+export function encodeVectorNetwork(network: VectorNetworkInput): Uint8Array {
+  let regionsByteLength = 0;
+  for (const region of network.regions) {
+    regionsByteLength += 8; // packed + numLoops
+    for (const loop of region.loops) regionsByteLength += 4 + loop.length * 4;
+  }
+  const totalByteLength =
+    12 + network.vertices.length * 12 + network.segments.length * 28 + regionsByteLength;
+
+  const buffer = new ArrayBuffer(totalByteLength);
+  const view = new DataView(buffer);
+  let offset = 0;
+
+  view.setUint32(offset, network.vertices.length, true); offset += 4;
+  view.setUint32(offset, network.segments.length, true); offset += 4;
+  view.setUint32(offset, network.regions.length, true); offset += 4;
+
+  for (const vertex of network.vertices) {
+    view.setUint32(offset, vertex.handleMirroring, true); offset += 4;
+    view.setFloat32(offset, vertex.x, true); offset += 4;
+    view.setFloat32(offset, vertex.y, true); offset += 4;
+  }
+
+  for (const segment of network.segments) {
+    view.setUint32(offset, 0, true); offset += 4; // word0 — 0 throughout Figma output
+    view.setUint32(offset, segment.start.vertex, true); offset += 4;
+    view.setFloat32(offset, segment.start.dx, true); offset += 4;
+    view.setFloat32(offset, segment.start.dy, true); offset += 4;
+    view.setUint32(offset, segment.end.vertex, true); offset += 4;
+    view.setFloat32(offset, segment.end.dx, true); offset += 4;
+    view.setFloat32(offset, segment.end.dy, true); offset += 4;
+  }
+
+  for (const region of network.regions) {
+    const packed = (region.styleID << 1) | (region.windingRule === "NONZERO" ? 1 : 0);
+    view.setUint32(offset, packed, true); offset += 4;
+    view.setUint32(offset, region.loops.length, true); offset += 4;
+    for (const loop of region.loops) {
+      view.setUint32(offset, loop.length, true); offset += 4;
+      for (const segmentIndex of loop) {
+        view.setUint32(offset, segmentIndex, true); offset += 4;
+      }
+    }
+  }
+
+  return new Uint8Array(buffer, 0, offset);
 }
 
 function cloneStyleOverrides(styleOverrideTable: readonly VectorStyleOverride[] | undefined): VectorStyleOverride[] | undefined {

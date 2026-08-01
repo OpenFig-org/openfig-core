@@ -4,6 +4,8 @@ import { join } from "path";
 import {
   appendVectorPayloadToDocument,
   encodeCommandsBlob,
+  encodeVectorNetwork,
+  encodeVectorNetworkBlob,
   geometryBlobToSVGPath,
   getBlobBytes,
   parseFig,
@@ -300,5 +302,68 @@ describe("parseVectorNetworkBlob", () => {
   it("throws on trailing bytes after a valid blob", () => {
     // minimal valid blob (24 bytes) plus one extra word
     expect(() => parseVectorNetworkBlob(buildBlob([1, 0, 0, 0, 0, 0, 0]))).toThrow(/trailing bytes/);
+  });
+});
+
+describe("encodeVectorNetwork", () => {
+  // The load-bearing Phase 3 proof. The format is not fully understood (word0 is
+  // unidentified, the corpus is small), so the one acceptance criterion that does
+  // not require understanding every field is byte-identity: decode a Figma-authored
+  // blob and re-encode it unmodified, and require the same bytes back. Anything
+  // short of 17/17 is an unresolved layout gap and is reported, never skipped.
+  it("round-trips every reference blob byte-identically", () => {
+    const files = collectReferenceFigs();
+    const failures: string[] = [];
+    let blobCount = 0;
+
+    for (const file of files) {
+      const doc = parseFig(new Uint8Array(readFileSync(file)));
+      for (const node of doc.nodes) {
+        const blobIndex = node.vectorData?.vectorNetworkBlob;
+        if (blobIndex == null) continue;
+
+        const bytes = getBlobBytes(doc, blobIndex);
+        expect(bytes, `${file} node ${node.name} blob ${blobIndex}`).toBeInstanceOf(Uint8Array);
+
+        const reencoded = encodeVectorNetwork(parseVectorNetworkBlob(bytes!));
+        if (!Buffer.from(reencoded).equals(Buffer.from(bytes!))) {
+          failures.push(`${file} node ${node.name} (${bytes!.length} → ${reencoded.length} bytes)`);
+        }
+        blobCount++;
+      }
+    }
+
+    expect(failures, `byte-identical round-trip failures:\n${failures.join("\n")}`).toHaveLength(0);
+    expect(blobCount, `expected 17 reference blobs, found ${blobCount}`).toBe(17);
+  });
+
+  it("emits blobs that re-encode byte-identically through the public encoder", () => {
+    const blob = encodeVectorNetworkBlob([
+      parseSVGPathData("M0 0 C20 40 80 40 100 0 L100 100 Z"),
+      parseSVGPathData("M10 10 L90 10 L90 90 Z"),
+    ]);
+
+    const reencoded = encodeVectorNetwork(parseVectorNetworkBlob(blob));
+    expect(Buffer.from(reencoded).equals(Buffer.from(blob))).toBe(true);
+  });
+
+  it("confines emitted word0 to Figma's observed domain (0, never 4)", () => {
+    const blob = encodeVectorNetworkBlob([
+      parseSVGPathData("M0 0 L100 0 C100 50 50 100 0 100 Z"),
+      parseSVGPathData("M10 10 L90 10 L90 90 Z"),
+    ]);
+    const network = parseVectorNetworkBlob(blob);
+    expect(network.bytesConsumed).toBe(blob.length);
+
+    const view = new DataView(blob.buffer, blob.byteOffset, blob.byteLength);
+    const nv = network.vertices.length;
+    const ns = network.segments.length;
+    // vertex word0 sits at 12 + i*12; segment word0 at 12 + nv*12 + i*28.
+    for (let i = 0; i < nv; i++) {
+      expect(view.getUint32(12 + i * 12, true), `vertex ${i} word0`).toBe(0);
+    }
+    for (let i = 0; i < ns; i++) {
+      expect(view.getUint32(12 + nv * 12 + i * 28, true), `segment ${i} word0`).toBe(0);
+    }
   });
 });

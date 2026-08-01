@@ -585,6 +585,160 @@ export function encodeVectorNetworkBlob(pathCommandsList: readonly (readonly Vec
   return new Uint8Array(buffer, 0, offset);
 }
 
+export interface VectorNetworkVertex {
+  x: number;
+  y: number;
+}
+
+export interface VectorNetworkSegment {
+  start: { vertex: number; dx: number; dy: number };
+  end: { vertex: number; dx: number; dy: number };
+  isStraight: boolean;
+}
+
+export interface VectorNetworkRegion {
+  windingRule: "NONZERO" | "ODD";
+  styleID: number;
+  /** Each loop is an ordered list of segment indices. */
+  loops: number[][];
+}
+
+export interface VectorNetwork {
+  vertices: VectorNetworkVertex[];
+  segments: VectorNetworkSegment[];
+  regions: VectorNetworkRegion[];
+  /** Must equal the input length on success. */
+  bytesConsumed: number;
+}
+
+/**
+ * Decode a Figma `vectorNetworkBlob` into structured geometry.
+ *
+ * Verified byte-exact layout (little-endian):
+ *   header   12B : [vertexCount u32][segmentCount u32][regionCount u32]
+ *   vertex   12B : [word0 u32][x f32][y f32]
+ *   segment  28B : [word0 u32][startVertex u32][tsx f32][tsy f32]
+ *                   [endVertex u32][tex f32][tey f32]
+ *   region        : [packed u32][numLoops u32]
+ *                   per loop: [segCount u32][segIndex u32 × segCount]
+ *
+ * `packed` decodes as windingRule = (packed & 1) ? "NONZERO" : "ODD",
+ * styleID = packed >> 1.
+ *
+ * `word0` is 0 on every reference vertex and segment; its meaning is unknown
+ * and it is deliberately not used. A segment is straight iff all four tangent
+ * components are zero — there is no segment-type field.
+ */
+export function parseVectorNetworkBlob(bytes: Uint8Array): VectorNetwork {
+  if (bytes.length < 12) {
+    throw new Error(
+      `vectorNetworkBlob too short: ${bytes.length} bytes, need at least 12 for header`,
+    );
+  }
+
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let offset = 0;
+  const vertexCount = view.getUint32(offset, true); offset += 4;
+  const segmentCount = view.getUint32(offset, true); offset += 4;
+  const regionCount = view.getUint32(offset, true); offset += 4;
+
+  const verticesEnd = 12 + vertexCount * 12;
+  const segmentsEnd = verticesEnd + segmentCount * 28;
+  if (verticesEnd > bytes.length) {
+    throw new Error(
+      `vertexCount ${vertexCount} runs past buffer: needs ${verticesEnd} bytes, have ${bytes.length}`,
+    );
+  }
+  if (segmentsEnd > bytes.length) {
+    throw new Error(
+      `segmentCount ${segmentCount} runs past buffer: needs ${segmentsEnd} bytes, have ${bytes.length}`,
+    );
+  }
+
+  const vertices: VectorNetworkVertex[] = [];
+  for (let i = 0; i < vertexCount; i++) {
+    offset += 4; // word0 — meaning unknown, unused
+    const x = view.getFloat32(offset, true); offset += 4;
+    const y = view.getFloat32(offset, true); offset += 4;
+    vertices.push({ x, y });
+  }
+
+  const segments: VectorNetworkSegment[] = [];
+  for (let i = 0; i < segmentCount; i++) {
+    const segmentOffset = offset;
+    offset += 4; // word0 — meaning unknown, unused
+    const startVertex = view.getUint32(offset, true); offset += 4;
+    const tsx = view.getFloat32(offset, true); offset += 4;
+    const tsy = view.getFloat32(offset, true); offset += 4;
+    const endVertex = view.getUint32(offset, true); offset += 4;
+    const tex = view.getFloat32(offset, true); offset += 4;
+    const tey = view.getFloat32(offset, true); offset += 4;
+    if (startVertex >= vertexCount) {
+      throw new Error(
+        `segment ${i} startVertex ${startVertex} out of range (vertexCount ${vertexCount}) at offset ${segmentOffset}`,
+      );
+    }
+    if (endVertex >= vertexCount) {
+      throw new Error(
+        `segment ${i} endVertex ${endVertex} out of range (vertexCount ${vertexCount}) at offset ${segmentOffset}`,
+      );
+    }
+    segments.push({
+      start: { vertex: startVertex, dx: tsx, dy: tsy },
+      end: { vertex: endVertex, dx: tex, dy: tey },
+      isStraight: tsx === 0 && tsy === 0 && tex === 0 && tey === 0,
+    });
+  }
+
+  const regions: VectorNetworkRegion[] = [];
+  for (let r = 0; r < regionCount; r++) {
+    if (offset + 8 > bytes.length) {
+      throw new Error(
+        `region ${r} header runs past buffer at offset ${offset} (have ${bytes.length} bytes)`,
+      );
+    }
+    const packed = view.getUint32(offset, true); offset += 4;
+    const numLoops = view.getUint32(offset, true); offset += 4;
+    const windingRule: "NONZERO" | "ODD" = packed & 1 ? "NONZERO" : "ODD";
+    const styleID = packed >> 1;
+
+    const loops: number[][] = [];
+    for (let l = 0; l < numLoops; l++) {
+      if (offset + 4 > bytes.length) {
+        throw new Error(
+          `region ${r} loop ${l} segCount runs past buffer at offset ${offset} (have ${bytes.length} bytes)`,
+        );
+      }
+      const segCount = view.getUint32(offset, true); offset += 4;
+      if (offset + segCount * 4 > bytes.length) {
+        throw new Error(
+          `region ${r} loop ${l} declares ${segCount} segment indices, runs past buffer at offset ${offset} (have ${bytes.length} bytes)`,
+        );
+      }
+      const loop: number[] = [];
+      for (let s = 0; s < segCount; s++) {
+        const segIndex = view.getUint32(offset, true); offset += 4;
+        if (segIndex >= segmentCount) {
+          throw new Error(
+            `region ${r} loop ${l} segment index ${segIndex} out of range (segmentCount ${segmentCount})`,
+          );
+        }
+        loop.push(segIndex);
+      }
+      loops.push(loop);
+    }
+    regions.push({ windingRule, styleID, loops });
+  }
+
+  if (offset !== bytes.length) {
+    throw new Error(
+      `trailing bytes: parsed ${offset} bytes but buffer is ${bytes.length} bytes long`,
+    );
+  }
+
+  return { vertices, segments, regions, bytesConsumed: offset };
+}
+
 function cloneStyleOverrides(styleOverrideTable: readonly VectorStyleOverride[] | undefined): VectorStyleOverride[] | undefined {
   if (!styleOverrideTable?.length) return undefined;
   return JSON.parse(JSON.stringify(styleOverrideTable));

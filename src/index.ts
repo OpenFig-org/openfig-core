@@ -11,6 +11,7 @@ export {
   geometryBlobToSVGPath,
   getBlobBytes,
   parseSVGPathData,
+  parseVectorNetworkBlob,
   resolveVectorNodePaths,
 } from "./vector.js";
 export { hexToFigColor, parseCssRgbColor, cssColorToFigColor, makeSolidPaint } from "./color.js";
@@ -33,6 +34,10 @@ export type {
   ResolvedGeometryPath,
   ResolvedVectorNodePaths,
   VectorGeometryInput,
+  VectorNetwork,
+  VectorNetworkRegion,
+  VectorNetworkSegment,
+  VectorNetworkVertex,
   VectorPathCommand,
   VectorStyleOverride,
 } from "./vector.js";

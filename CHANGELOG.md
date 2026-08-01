@@ -5,7 +5,7 @@ All notable changes to `openfig-core` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - 2026-08-01
 
 ### Added
 
@@ -36,5 +36,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Isomorphic Parser & Encoder** — Initial open-source release of the isomorphic `.fig` and `.deck` file parser and Kiwi binary encoder, allowing reading and writing of Figma's schema-driven format in both Node.js and browser runtimes.
 - **Kiwi Schema Interoperability** — Integration of schema-driven Kiwi binary serialization, resolving zip archives (`fzstd`/`fflate` decoders), geometry nodes, vector path conversions, and gradient color structures.
 
+[0.4.0]: https://github.com/OpenFig-org/openfig-core/releases/tag/v0.4.0
 [0.3.7]: https://github.com/OpenFig-org/openfig-core/releases/tag/v0.3.7
 [0.3.6]: https://github.com/OpenFig-org/openfig-core/releases/tag/v0.3.6

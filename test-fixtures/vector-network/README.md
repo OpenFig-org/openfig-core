@@ -40,8 +40,12 @@ Byte-exact on all 17 blobs across these four files plus `../OpenFigs.fig` and `.
 
 - A segment is a **straight line iff all four tangent components are zero**. No field encodes
   segment type: `word0` is `0` on curved and straight segments alike.
-- `word0` is `0` throughout, on both vertices and segments. Its meaning is unidentified; it is
-  not required to reconstruct geometry.
+- The vertex leading word is **handle mirroring mode**, and it is **not** always `0`:
+  across these fixtures it is `0` on 385 vertices and `1` on 13 (all in
+  `curvy-squiggle.fig`, whose curves were drawn by hand). It must be preserved verbatim
+  through a decode/encode round-trip — clobbering it to `0` breaks byte identity.
+- The segment leading `word0` **is** `0` throughout (399 of 399). Its meaning is
+  unidentified and it is not required to reconstruct geometry.
 - The region `packed` word is `1` throughout, i.e. `styleID = 0`, `windingRule = NONZERO`.
 
 ## Provenance

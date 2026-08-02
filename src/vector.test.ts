@@ -200,7 +200,37 @@ describe("parseVectorNetworkBlob", () => {
       }
     }
 
-    expect(blobCount, `expected 42 reference vectorNetworkBlobs, found ${blobCount}`).toBe(42);
+    expect(blobCount, `expected 43 reference vectorNetworkBlobs, found ${blobCount}`).toBe(43);
+  });
+
+  // The vertex's leading word indexes vectorData.styleOverrideTable; it is not a
+  // VectorMirror enum. corner-radius-middle-dot-20.fig settles it directly: a
+  // three-point path whose middle vertex was given a corner radius of 20 in Figma.
+  // That vertex carries 2, and table entry styleID 2 holds cornerRadius 20 — under
+  // the enum reading, 2 would mean ANGLE_AND_LENGTH, which is not what was set.
+  // The two readings were indistinguishable for a long time because the only other
+  // non-zero value in the corpus is 1, and VectorMirror.ANGLE is also 1.
+  it("reads the vertex leading word as a styleOverrideTable index", () => {
+    const file = join(fixturesDir, "vector-network", "corner-radius-middle-dot-20.fig");
+    const doc = parseFig(new Uint8Array(readFileSync(file)));
+    const node = doc.nodes.find((candidate) => candidate.vectorData?.vectorNetworkBlob != null);
+
+    expect(node, "fixture must contain a vector node").toBeDefined();
+    const network = parseVectorNetworkBlob(getBlobBytes(doc, node!.vectorData.vectorNetworkBlob)!);
+    const table = node!.vectorData.styleOverrideTable as { styleID: number; cornerRadius?: number }[];
+
+    // Middle vertex of three, carrying the override that was applied to it.
+    expect(network.vertices.map((vertex) => vertex.styleID)).toEqual([0, 2, 1]);
+
+    const referenced = table.find((entry) => entry.styleID === network.vertices[1].styleID);
+    expect(referenced, "the vertex's word must resolve to a table entry").toBeDefined();
+    expect(referenced!.cornerRadius, "and that entry is the corner radius that was set").toBe(20);
+
+    // Every non-zero vertex word resolves; 0 means "no override" and has no entry.
+    for (const vertex of network.vertices) {
+      if (vertex.styleID === 0) continue;
+      expect(table.some((entry) => entry.styleID === vertex.styleID)).toBe(true);
+    }
   });
 
   // Geometry oracle. Byte-exact consumption only proves the blob *parses*; it says nothing
@@ -324,7 +354,7 @@ describe("encodeVectorNetwork", () => {
   // unidentified, the corpus is small), so the one acceptance criterion that does
   // not require understanding every field is byte-identity: decode a Figma-authored
   // blob and re-encode it unmodified, and require the same bytes back. Anything
-  // short of 42/42 is an unresolved layout gap and is reported, never skipped.
+  // short of 43/43 is an unresolved layout gap and is reported, never skipped.
   it("round-trips every reference blob byte-identically", () => {
     const files = collectReferenceFigs();
     const failures: string[] = [];
@@ -348,7 +378,7 @@ describe("encodeVectorNetwork", () => {
     }
 
     expect(failures, `byte-identical round-trip failures:\n${failures.join("\n")}`).toHaveLength(0);
-    expect(blobCount, `expected 42 reference blobs, found ${blobCount}`).toBe(42);
+    expect(blobCount, `expected 43 reference blobs, found ${blobCount}`).toBe(43);
   });
 
   it("emits blobs that re-encode byte-identically through the public encoder", () => {

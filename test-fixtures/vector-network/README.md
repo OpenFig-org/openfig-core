@@ -9,6 +9,7 @@ structural case that the others do not exercise. All are `fig-kiwi` v101.
 | `curvy-squiggle.fig` | 2 | 16v / 15s / 0 regions | Curved segments with **no** region block. Confirms header size independently, and that curve-ness is carried by tangents. |
 | `circle-and-rounded-rectangle-outline-stroke.fig` | 4 | filled + outline-stroked | First fixtures with `regionCount > 0`. The outline-stroked pair yield **2-loop** regions (outer + inner ring). |
 | `word-outline-stroke.fig` | 9 | outlined letterforms | Regions with **1, 2 and 3 loops** — letter counters. |
+| `corner-radius-middle-dot-20.fig` | 1 | 3-point path, middle vertex given corner radius 20 | **Proves the vertex leading word is a `styleOverrideTable` index.** Its vertices carry `[0, 2, 1]`, and table entry `styleID: 2` is the corner radius that was set. Under the handle-mirroring reading, `2` would mean `ANGLE_AND_LENGTH`. |
 | `coloradjusted.fig` | 25 | `BRUSH` nodes | Scale: 25,993 vertices, 26,092 segments, a region with **740 loops**. The only fixture with non-empty `styleOverrideTable`s, and the only one where `commandsBlob` and the vector network differ in command count. |
 
 ## Why these cases matter
@@ -37,7 +38,7 @@ region  x nr      : [styleID<<1|windingRule u32][numLoops u32]
                     per loop: [segCount u32][segIndex u32 x segCount]
 ```
 
-Byte-exact on all 42 blobs across these five files plus `../OpenFigs.fig` and `../circle.fig` — 26,391 vertices and 26,491 segments in total.
+Byte-exact on all 43 blobs across these six files plus `../OpenFigs.fig` and `../circle.fig` — 26,391 vertices and 26,491 segments in total.
 
 - A segment is a **straight line iff all four tangent components are zero**. No field encodes
   segment type: `word0` is `0` on curved and straight segments alike.
@@ -48,15 +49,16 @@ Byte-exact on all 42 blobs across these five files plus `../OpenFigs.fig` and `.
   `{styleID: 1, handleMirroring: "ANGLE"}`. It must be preserved verbatim through a
   decode/encode round-trip — clobbering it to `0` breaks byte identity.
 
-  This was first read as a handle-mirroring enum, because that lone fixture's override
-  has `styleID: 1` and `VectorMirror.ANGLE` is also `1` — indistinguishable from one
-  file. Other Figma files settle it: override entries there carry six properties
-  (`cornerRadius`, `strokeCap`, `strokeJoin`, `handleMirroring`, `cornerSmoothing`),
-  which cannot fit in one u32, and appear with `styleID` 1 and 2 in sequence. The Kiwi
-  schema agrees — `VectorData` has a `styleOverrideTable` of `NodeChange` keyed by
-  `styleID`, and no other array in which per-vertex references could live.
+  This was first read as a handle-mirroring enum, because the corpus's only non-zero
+  value was `1` and `VectorMirror.ANGLE` is also `1` — indistinguishable from that
+  evidence alone. `corner-radius-middle-dot-20.fig` was made to settle it and does:
+  a vertex given a corner radius of 20 carries `2`, resolving to a table entry
+  holding exactly that. `2` would be `ANGLE_AND_LENGTH` under the enum reading.
+  Corroborating: entries elsewhere carry six properties, which cannot fit in one
+  u32, and the Kiwi schema gives `VectorData` a `styleOverrideTable` of `NodeChange`
+  keyed by `styleID` with no other array for per-vertex references.
 - The segment leading word is structurally the same slot and is presumed to be a
-  `styleID` too, but it is `0` on all 26,491 segments here and on every segment of every
+  `styleID` too, but it is `0` on all 26,493 segments here and on every segment of every
   Figma-authored file checked so far, so nothing confirms what a segment-scoped override
   would contain. Figma's public plugin API exposes style properties on `VectorVertex`
   and `VectorRegion` but none on `VectorSegment`, so the slot may be editor-only or

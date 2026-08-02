@@ -75,7 +75,7 @@ carrying bezier tangent deltas, and regions grouping segment indices into closed
 loops.
 
 The layout below is verified byte-exact on the Figma-authored reference corpus
-(17 blobs across 6 files, format versions 101 and 106):
+(43 blobs across 7 files, format versions 101 and 106):
 
 ```
 header   12B : vertexCount(u32)  segmentCount(u32)  regionCount(u32)
@@ -88,11 +88,23 @@ region       : packed(u32)  numLoops(u32)
 
 - `packed` decodes as `windingRule = (packed & 1) ? "NONZERO" : "ODD"` and
   `styleID = packed >> 1`. In every reference region `packed === 1`.
-- The vertex's leading word is Figma's **handle-mirroring** mode. Observed values
-  are `0` and `1`. It does not affect rendered geometry, but it is preserved
-  verbatim so a decoded blob re-encodes byte-for-byte.
-- The segment's leading `word0` is `0` throughout the reference corpus; its
-  meaning is unknown and it is never used for geometry.
+- The vertex's leading word is a **`styleID`** — an index into the node's
+  `vectorData.styleOverrideTable`, where `0` means "no override". Observed values
+  are `0`, `1` and `2`. It does not affect rendered geometry, but it must be
+  preserved verbatim so a decoded blob re-encodes byte-for-byte.
+
+  `test-fixtures/vector-network/corner-radius-middle-dot-20.fig` establishes this
+  directly: a three-point path whose middle vertex was given a corner radius of 20
+  in Figma has vertices `[0, 2, 1]`, and table entry `styleID: 2` holds
+  `cornerRadius: 20`. It was previously read as a `VectorMirror` enum, which was
+  indistinguishable while the only non-zero value seen was `1` and
+  `VectorMirror.ANGLE` is also `1`. Under that reading `2` would be
+  `ANGLE_AND_LENGTH`, which is not what was set.
+- The segment's leading word is structurally the same slot and presumably also a
+  `styleID`, but it is `0` on all 26,493 reference segments, so nothing shows what
+  a segment-scoped override would hold. Figma's plugin API exposes style properties
+  on `VectorVertex` and `VectorRegion` and none on `VectorSegment`, so the slot may
+  be unreachable from the editor. Treat it as unidentified; write `0`.
 
 ### Curve classification
 
@@ -111,7 +123,7 @@ For a cubic segment from vertex `A` to vertex `B`, the SVG control points are
 ### Fidelity guarantee
 
 `parseVectorNetworkBlob` followed by `encodeVectorNetwork` reproduces every
-Figma-authored reference blob **byte-for-byte (17/17)**. That round-trip is the
+Figma-authored reference blob **byte-for-byte (43/43)**. That round-trip is the
 acceptance criterion the format is held to: it requires no theory of what each
 field means, only that we put back what we found. Newly authored geometry
 (`encodeVectorNetworkBlob`) confines every emitted value to Figma's observed
@@ -356,7 +368,7 @@ What the current helpers solve:
 - read-side decode of `fillGeometry` / `strokeGeometry`
 - command-blob encoding for supported path commands
 - `vectorNetworkBlob` decode (`parseVectorNetworkBlob`) and byte-identical
-  re-encode (`encodeVectorNetwork`), verified 17/17 on the Figma-authored corpus
+  re-encode (`encodeVectorNetwork`), verified 43/43 on the Figma-authored corpus
 - `vectorNetworkBlob` authoring in Figma's verified layout
   (`encodeVectorNetworkBlob`)
 - append-only blob/reference generation for new VECTOR payloads

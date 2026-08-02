@@ -59,7 +59,7 @@ Byte-exact on all 43 blobs across these six files plus `../OpenFigs.fig` and `..
   keyed by `styleID` with no other array for per-vertex references.
 - The segment leading word is structurally the same slot and is presumed to be a
   `styleID` too, but it is `0` on all 26,493 segments here and on every segment of every
-  Figma-authored file checked so far, so nothing confirms what a segment-scoped override
+  reference file checked so far, so nothing confirms what a segment-scoped override
   would contain. Figma's public plugin API exposes style properties on `VectorVertex`
   and `VectorRegion` but none on `VectorSegment`, so the slot may be editor-only or
   reserved. Treat it as unidentified; write `0`.

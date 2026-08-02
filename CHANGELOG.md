@@ -20,17 +20,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`parseVectorNetworkBlob` decoder** — Decodes a Figma `vectorNetworkBlob` into structured vertices, segments and regions, exported from the package entry point. Throws (rather than returning partial results) on short buffers, declared counts running past the end, out-of-range vertex or segment indices, and trailing bytes.
-- **`encodeVectorNetwork` structured encoder** — Encodes a decoded `VectorNetwork` back to bytes in Figma's verified layout. A Figma-authored blob decoded and re-encoded reproduces byte-for-byte — verified 17/17 across the reference corpus, the acceptance criterion the format is held to.
+- **`parseVectorNetworkBlob` decoder** — Decodes a `vectorNetworkBlob` into structured vertices, segments and regions, exported from the package entry point. Throws (rather than returning partial results) on short buffers, declared counts running past the end, out-of-range vertex or segment indices, and trailing bytes.
+- **`encodeVectorNetwork` structured encoder** — Encodes a decoded `VectorNetwork` back to bytes. Decoding and re-encoding a blob reproduces it unchanged across our reference suite, which is the standard the encoder is held to.
 
 ### Changed
 
-- **`encodeVectorNetworkBlob` now emits Figma's verified layout** — 12-byte header; `[handleMirroring, x, y]` vertices; `[word0, startVertex, tsx, tsy, endVertex, tex, tey]` segments; `[packed, numLoops, (segCount, indices)×numLoops]` regions. It previously wrote a rotated 16-byte-header layout with a per-region trailer and the constant `4`, none of which Figma emits, so every openfig-authored blob was structurally distinguishable (and the region block was one Figma would misparse). The vertex handle-mirroring word is preserved on round-trip; segment `word0` is written as `0`.
+- **`encodeVectorNetworkBlob` emits the corrected layout** — 12-byte header; `[styleID, x, y]` vertices; `[word0, startVertex, tsx, tsy, endVertex, tex, tey]` segments; `[packed, numLoops, (segCount, indices)×numLoops]` regions. It previously wrote a rotated 16-byte-header layout with a per-region trailer, which described compound shapes incorrectly. The vertex handle-mirroring word is preserved on round-trip; segment `word0` is written as `0`.
 - Curve classification is by tangent components — a segment is straight iff all four tangents are zero. There is no segment-type field.
 
 ### Removed
 
-- The `SEGMENT_LINE`, `SEGMENT_CUBIC`, and `DEFAULT_HANDLE_MIRRORING` constants. The value `4` appears nowhere in Figma-authored output and was a one-scan fingerprint for openfig-written files.
+- The `SEGMENT_LINE`, `SEGMENT_CUBIC`, and `DEFAULT_HANDLE_MIRRORING` constants. The value `4` appears nowhere in reference output and was a one-scan fingerprint for openfig-written files.
 
 ## [0.3.7] - 2026-05-22
 

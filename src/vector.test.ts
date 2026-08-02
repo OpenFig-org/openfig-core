@@ -352,7 +352,7 @@ describe("parseVectorNetworkBlob", () => {
 describe("encodeVectorNetwork", () => {
   // The load-bearing Phase 3 proof. The format is not fully understood (word0 is
   // unidentified, the corpus is small), so the one acceptance criterion that does
-  // not require understanding every field is byte-identity: decode a Figma-authored
+  // not require understanding every field is byte-identity: decode a reference
   // blob and re-encode it unmodified, and require the same bytes back. Anything
   // short of 43/43 is an unresolved layout gap and is reported, never skipped.
   it("round-trips every reference blob byte-identically", () => {

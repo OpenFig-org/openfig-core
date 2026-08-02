@@ -761,7 +761,7 @@ export type VectorNetworkInput = Pick<VectorNetwork, "vertices" | "segments" | "
  * startVertex, tsx, tsy, endVertex, tex, tey]`; region `[styleID<<1|windingRule,
  * numLoops, (segCount, indices)×numLoops]`. The vertex handle-mirroring word is
  * written back as parsed; the segment word0 is written as 0, the only value
- * observed in Figma-authored output. A Figma-authored blob decoded and re-encoded
+ * observed in reference output. A reference blob decoded and re-encoded
  * here comes back byte-for-byte identical — the acceptance criterion verified by
  * the corpus round-trip test.
  */

@@ -74,7 +74,7 @@ resolved blob is a little-endian binary vector network: vertices, segments
 carrying bezier tangent deltas, and regions grouping segment indices into closed
 loops.
 
-The layout below is verified byte-exact on the Figma-authored reference corpus
+The layout below is verified byte-exact on the reference reference corpus
 (43 blobs across 7 files, format versions 101 and 106):
 
 ```
@@ -123,7 +123,7 @@ For a cubic segment from vertex `A` to vertex `B`, the SVG control points are
 ### Fidelity guarantee
 
 `parseVectorNetworkBlob` followed by `encodeVectorNetwork` reproduces every
-Figma-authored reference blob **byte-for-byte (43/43)**. That round-trip is the
+reference reference blob **byte-for-byte (43/43)**. That round-trip is the
 acceptance criterion the format is held to: it requires no theory of what each
 field means, only that we put back what we found. Newly authored geometry
 (`encodeVectorNetworkBlob`) confines every emitted value to Figma's observed
@@ -257,7 +257,7 @@ domain.
 
 Encodes a structured `VectorNetwork` (or any `{ vertices, segments, regions }`)
 into a `vectorNetworkBlob` in Figma's verified layout. This is the structured
-inverse of `parseVectorNetworkBlob`: a Figma-authored blob decoded and re-encoded
+inverse of `parseVectorNetworkBlob`: a reference blob decoded and re-encoded
 here comes back byte-for-byte identical. `encodeVectorNetworkBlob` builds the
 structure from path commands and delegates to this function.
 
@@ -368,7 +368,7 @@ What the current helpers solve:
 - read-side decode of `fillGeometry` / `strokeGeometry`
 - command-blob encoding for supported path commands
 - `vectorNetworkBlob` decode (`parseVectorNetworkBlob`) and byte-identical
-  re-encode (`encodeVectorNetwork`), verified 43/43 on the Figma-authored corpus
+  re-encode (`encodeVectorNetwork`), verified 43/43 on the reference corpus
 - `vectorNetworkBlob` authoring in Figma's verified layout
   (`encodeVectorNetworkBlob`)
 - append-only blob/reference generation for new VECTOR payloads

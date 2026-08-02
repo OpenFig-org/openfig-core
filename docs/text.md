@@ -102,7 +102,7 @@ the node.
   dialog, and renders in the wrong font — there is nothing to attribute it to.
   Synthesise `Family-Style` with whitespace removed when you have no better
   source: `Inter-Bold`, `EBGaramond-Regular`, `SpaceGrotesk-SemiBold`. This is
-  what Figma-authored files carry for standard Google Fonts. It applies at every
+  what reference files carry for standard Google Fonts. It applies at every
   site that writes a `fontName` — node-level and inside `styleOverrideTable`
   alike, since a run override with an empty PostScript name substitutes just as
   a node does.
